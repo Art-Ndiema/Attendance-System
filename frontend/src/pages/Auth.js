@@ -37,6 +37,8 @@ export function Auth() {
             
             const data = await response.json();
             
+            console.log('Login response:', response.status, data);
+            
             if (response.ok) {
               localStorage.setItem('authToken', data.token);
               localStorage.setItem('admin', JSON.stringify(data.admin));
@@ -45,6 +47,7 @@ export function Auth() {
               showError(data.error || 'Login failed');
             }
           } catch (error) {
+            console.error('Login error:', error);
             showError('Network error. Please try again.');
           }
         });
@@ -55,6 +58,7 @@ export function Auth() {
       const errorEl = document.getElementById('auth-error');
       if (errorEl) {
         errorEl.textContent = message;
+        errorEl.classList.add('visible');
         errorEl.style.display = 'block';
       }
     }

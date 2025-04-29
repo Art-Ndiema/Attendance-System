@@ -1,106 +1,175 @@
+require('dotenv').config();
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
-const cors = require('cors');
 const path = require('path');
+const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-require('dotenv').config();
 
 const app = express();
+const PORT = process.env.PORT || 3000;
 
-// Enable CORS and JSON parsing
-app.use(cors());
+// Database Configuration
+const DB_PATH = path.join(__dirname, 'attendance.db');
+
+// Middleware
+app.use(cors({
+  origin: '*', // Allow all origins during development
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Database connection
-const db = new sqlite3.Database('C:\\Users\\artnd\\Desktop\\Electronics\\Adruino Attendance System\\attendance.db', (err) => {
-  if (err) console.error('Database error:', err);
-  console.log('Connected to SQLite database');
+// Serve static frontend files from the frontend directory
+app.use(express.static(path.join(__dirname, '..', 'frontend')));
+
+// Single home route for SPA
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'frontend', 'index.html'));
 });
 
-// Create admin table if not exists
-db.run(`CREATE TABLE IF NOT EXISTS Admins (
-  admin_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  username TEXT UNIQUE,
-  password_hash TEXT,
-  full_name TEXT,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  last_login TEXT
-)`);
+// Database Connection
+const db = new sqlite3.Database(DB_PATH, (err) => {
+  if (err) {
+    console.error('Database connection error:', err);
+    process.exit(1);
+  }
+  console.log('Connected to SQLite database');
+  initializeDatabase();
+});
 
-// Authentication middleware
+// Database Initialization
+function initializeDatabase() {
+  db.serialize(() => {
+    // Enable foreign key constraints
+    db.run('PRAGMA foreign_keys = ON');
+    
+    // Create tables if they don't exist
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS Admins (
+        admin_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        full_name TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        last_login TEXT
+      );
+      
+      CREATE TABLE IF NOT EXISTS Students (
+        student_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        rfid_tag TEXT UNIQUE NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      CREATE TABLE IF NOT EXISTS Attendance (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id INTEGER NOT NULL,
+        scan_time TEXT NOT NULL,
+        status TEXT DEFAULT 'Present',
+        FOREIGN KEY (student_id) REFERENCES Students(student_id) ON DELETE CASCADE
+      );
+    `);
+    
+    // Create default admin if none exists
+    db.get("SELECT COUNT(*) as count FROM Admins", (err, row) => {
+      if (row.count === 0) {
+        bcrypt.hash('admin123', 10, (err, hash) => {
+          db.run(
+            "INSERT INTO Admins (username, password_hash, full_name) VALUES (?, ?, ?)",
+            ['admin', hash, 'System Administrator'],
+            (err) => {
+              if (err) console.error("Error creating admin:", err);
+              else console.log("Default admin created - username: admin, password: admin123");
+            }
+          );
+        });
+      }
+    });
+  });
+}
+
+// Authentication Middleware
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   
   if (!token) return res.sendStatus(401);
   
-  jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, admin) => {
+  jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-123', (err, user) => {
     if (err) return res.sendStatus(403);
-    req.admin = admin;
-    next();
+    
+    // Verify admin still exists (removed is_active check)
+    db.get(
+      "SELECT admin_id FROM Admins WHERE admin_id = ?",
+      [user.adminId],
+      (err, admin) => {
+        if (err || !admin) return res.sendStatus(403);
+        req.user = user;
+        next();
+      }
+    );
   });
 }
 
-// Admin endpoints
-app.post('/api/auth/signup', async (req, res) => {
-  const { username, password, full_name } = req.body;
-  
-  if (!username || !password || !full_name) {
-    return res.status(400).json({ error: 'All fields are required' });
-  }
+// API Routes
 
-  try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    db.run(
-      'INSERT INTO Admins (username, password_hash, full_name) VALUES (?, ?, ?)',
-      [username, hashedPassword, full_name],
-      function(err) {
-        if (err) {
-          return res.status(400).json({ error: 'Username already exists' });
-        }
-        res.status(201).json({ message: 'Admin account created' });
-      }
-    );
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+// Health Check
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    database: DB_PATH,
+    tables: ['Admins', 'Students', 'Attendance']
+  });
 });
 
+// Authentication Routes
 app.post('/api/auth/login', (req, res) => {
+  console.log('Login attempt:', req.body);
   const { username, password } = req.body;
   
   if (!username || !password) {
+    console.log('Missing username or password');
     return res.status(400).json({ error: 'Username and password required' });
   }
 
+  // Removed the is_active check from the query
   db.get(
-    'SELECT * FROM Admins WHERE username = ?',
+    "SELECT * FROM Admins WHERE username = ?",
     [username],
     async (err, admin) => {
-      if (err) return res.status(500).json({ error: err.message });
-      if (!admin) return res.status(401).json({ error: 'Invalid credentials' });
+      if (err) {
+        console.error('Database error:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      if (!admin) {
+        console.log('Invalid username');
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
       
       try {
+        console.log('Comparing passwords');
         const match = await bcrypt.compare(password, admin.password_hash);
+        console.log('Password match:', match);
         if (!match) return res.status(401).json({ error: 'Invalid credentials' });
         
         // Update last login
         db.run(
-          'UPDATE Admins SET last_login = datetime("now") WHERE admin_id = ?',
+          "UPDATE Admins SET last_login = datetime('now') WHERE admin_id = ?",
           [admin.admin_id]
         );
         
         const token = jwt.sign(
-          { adminId: admin.admin_id, username: admin.username },
-          process.env.JWT_SECRET || 'your-secret-key',
+          { 
+            adminId: admin.admin_id,
+            username: admin.username 
+          },
+          process.env.JWT_SECRET || 'fallback-secret-123',
           { expiresIn: '4h' }
         );
         
         res.json({ 
-          token, 
+          token,
           admin: {
             id: admin.admin_id,
             username: admin.username,
@@ -108,55 +177,51 @@ app.post('/api/auth/login', (req, res) => {
           }
         });
       } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Login error:', err);
+        res.status(500).json({ error: 'Login failed' });
       }
     }
   );
 });
 
-// Protected routes
+// Protected Routes
 app.get('/api/dashboard', authenticateToken, (req, res) => {
   const selectedDate = req.query.date || new Date().toISOString().split('T')[0];
   
-  db.get('SELECT COUNT(*) AS total FROM Students', (err, totalRow) => {
-    if (err) return res.status(500).json({ error: err.message });
-    
-    const dateQuery = `
+  const queries = {
+    totalStudents: 'SELECT COUNT(*) AS total FROM Students',
+    presentToday: `
       SELECT COUNT(DISTINCT student_id) AS present 
       FROM Attendance 
       WHERE DATE(scan_time) = ? AND status = 'Present'
-    `;
-    
-    db.get(dateQuery, [selectedDate], (err, presentRow) => {
+    `,
+    attendanceStats: `
+      SELECT status, COUNT(*) AS count 
+      FROM Attendance 
+      WHERE DATE(scan_time) = ? 
+      GROUP BY status
+    `
+  };
+
+  db.serialize(() => {
+    db.get(queries.totalStudents, [], (err, totalRow) => {
       if (err) return res.status(500).json({ error: err.message });
       
-      const chartQuery = `
-        SELECT status, COUNT(*) AS count 
-        FROM Attendance 
-        WHERE DATE(scan_time) = ? 
-        GROUP BY status
-      `;
-      
-      db.all(chartQuery, [selectedDate], (err, chartRows) => {
+      db.get(queries.presentToday, [selectedDate], (err, presentRow) => {
         if (err) return res.status(500).json({ error: err.message });
         
-        const chartData = {
-          Present: 0,
-          Absent: 0
-        };
-        
-        chartRows.forEach(row => {
-          chartData[row.status] = row.count;
-        });
-        
-        const presentCount = presentRow.present || 0;
-        const absentCount = totalRow.total - presentCount;
-        
-        res.json({
-          total: totalRow.total,
-          present: presentCount,
-          absent: absentCount,
-          chart: chartData
+        db.all(queries.attendanceStats, [selectedDate], (err, chartRows) => {
+          if (err) return res.status(500).json({ error: err.message });
+          
+          const chartData = { Present: 0, Absent: 0 };
+          chartRows.forEach(row => chartData[row.status] = row.count);
+          
+          res.json({
+            total: totalRow.total,
+            present: presentRow.present || 0,
+            absent: totalRow.total - (presentRow.present || 0),
+            chart: chartData
+          });
         });
       });
     });
@@ -164,46 +229,36 @@ app.get('/api/dashboard', authenticateToken, (req, res) => {
 });
 
 app.get('/api/attendance', authenticateToken, (req, res) => {
-  const dateFilter = req.query.date ? `WHERE DATE(a.scan_time) = '${req.query.date}'` : '';
-  
+  const { date } = req.query;
   const query = `
     SELECT 
-      s.name AS name,
-      s.rfid_tag AS rfid_tag,
-      a.scan_time AS scan_time,
-      a.status AS status
+      s.name, 
+      s.rfid_tag, 
+      a.scan_time, 
+      a.status
     FROM Attendance a
     JOIN Students s ON a.student_id = s.student_id
-    ${dateFilter}
+    ${date ? "WHERE DATE(a.scan_time) = ?" : ""}
     ORDER BY a.scan_time DESC
   `;
   
-  db.all(query, [], (err, rows) => {
+  db.all(query, date ? [date] : [], (err, rows) => {
     if (err) {
-      console.error('Error fetching attendance:', err);
-      return res.status(500).json({ error: err.message });
+      console.error('Attendance fetch error:', err);
+      return res.status(500).json({ error: 'Database error' });
     }
     res.json(rows);
   });
 });
 
-// Health check endpoint (public)
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Server is running' });
+// Error Handling
+app.use((err, req, res, next) => {
+  console.error('Server error:', err);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
-// Start the server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-// Temporary route to create first admin (remove after use)
-app.post('/create-first-admin', async (req, res) => {
-  const hashedPassword = await bcrypt.hash('admin123', 10);
-  db.run(
-    'INSERT INTO Admins (username, password_hash, full_name) VALUES (?, ?, ?)',
-    ['admin', hashedPassword, 'System Admin'],
-    function(err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ message: 'First admin created' });
-    }
-  );
+// Start Server
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Database: ${DB_PATH}`);
 });

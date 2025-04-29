@@ -1,0 +1,85 @@
+.auth-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  }
+  
+  .auth-card {
+    background: white;
+    padding: 2.5rem;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+    width: 100%;
+    max-width: 420px;
+    margin: 1rem;
+  }
+  
+  .auth-card h1 {
+    text-align: center;
+    margin-bottom: 1.75rem;
+    color: #1a3c6d;
+    font-size: 1.8rem;
+    font-weight: 600;
+  }
+  
+  .form-group {
+    margin-bottom: 1.25rem;
+  }
+  
+  .form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #4a5568;
+    font-weight: 500;
+    font-size: 0.95rem;
+  }
+  
+  .form-group input {
+    width: 100%;
+    padding: 0.85rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+  }
+  
+  .form-group input:focus {
+    outline: none;
+    border-color: #4299e1;
+    box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
+  }
+  
+  .btn-login {
+    width: 100%;
+    padding: 0.85rem;
+    background: #1a3c6d;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 0.5rem;
+    transition: all 0.3s ease;
+  }
+  
+  .btn-login:hover {
+    background: #2b528b;
+    transform: translateY(-2px);
+  }
+  
+  .error-message {
+    color: #e53e3e;
+    margin-top: 1rem;
+    padding: 0.75rem;
+    background: #fff5f5;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    display: none;
+  }
+  
+  .error-message.visible {
+    display: block;
+  }
