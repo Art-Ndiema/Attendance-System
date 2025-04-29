@@ -1,23 +1,33 @@
 // src/main.js
+import { Auth } from './pages/Auth.js';
 import { Attendance } from './pages/Attendance.js';
 import { Dashboard } from './pages/Dashboard.js';
 import { Reports } from './pages/Reports.js';
 import './styles/style.css';
-import { setupCounter } from './utils/counter.js';
 
-// Simple routing
 const app = document.querySelector('#app');
 const path = window.location.pathname;
 
 const renderPage = (path) => {
+  const publicRoutes = ['/login'];
+  const authToken = localStorage.getItem('authToken');
+  
+  if (!publicRoutes.includes(path) && !authToken) {
+    window.location.href = '/login';
+    return;
+  }
+
   let page;
-  if (path === '/attendance') {
+  if (path === '/login') {
+    page = Auth();
+  } else if (path === '/attendance') {
     page = Attendance();
   } else if (path === '/reports') {
     page = Reports();
   } else {
     page = Dashboard();
   }
+  
   if (app) {
     app.innerHTML = page.html;
     page.init();
@@ -27,12 +37,6 @@ const renderPage = (path) => {
 };
 
 renderPage(path);
-
-// Initialize counter
-const counterElement = document.querySelector('#counter');
-if (counterElement) {
-  setupCounter(counterElement);
-}
 
 // Handle navigation
 window.addEventListener('popstate', () => {
@@ -47,5 +51,13 @@ document.addEventListener('click', (e) => {
     const newPath = link.pathname;
     history.pushState({}, '', newPath);
     renderPage(newPath);
+  }
+  
+  // Handle logout
+  if (e.target.classList.contains('logout')) {
+    e.preventDefault();
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('admin');
+    window.location.href = '/login';
   }
 });

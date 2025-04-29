@@ -108,7 +108,8 @@ export function Reports() {
     }
 
     generateBtn?.addEventListener('click', () => {
-      fetch('https://rfid-attendance-backend.onrender.com/api/attendance')
+      fetch('http://localhost:3000/api/attendance')
+      //fetch('https://rfid-attendance-backend.onrender.com/api/attendance')
         .then(res => res.json())
         .then(data => {
           allData = data;
@@ -119,8 +120,8 @@ export function Reports() {
     });
 
     exportBtn?.addEventListener('click', () => {
-    //   fetch('http://localhost:3000/api/attendance')
-    fetch('https://rfid-attendance-backend.onrender.com/api/attendance')
+    fetch('http://localhost:3000/api/attendance')
+//fetch('https://rfid-attendance-backend.onrender.com/api/attendance')
         .then(res => res.json())
         .then(data => {
           const csvRows = [

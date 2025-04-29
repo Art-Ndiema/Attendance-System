@@ -1,10 +1,12 @@
-// /frontend/src/pages/Dashboard.js
+// src/pages/Dashboard.js
 import { Chart } from 'chart.js/auto';
 import '../styles/style.css';
 
 Chart.register({ id: 'doughnut' });
 
 export function Dashboard() {
+  const admin = JSON.parse(localStorage.getItem('admin')) || {};
+  
   const html = `
     <div class="rfid-system-container min-h-screen">
       <div class="hamburger">
@@ -14,6 +16,9 @@ export function Dashboard() {
       </div>
       <header>
         <h1>RFID Attendance System</h1>
+        <div class="admin-info">
+          <span>Welcome, ${admin.fullName || 'Admin'}</span>
+        </div>
         <nav>
           <ul>
             <li><a href="/" class="border-b-2">Dashboard</a></li>
@@ -24,9 +29,9 @@ export function Dashboard() {
         </nav>
       </header>
       <main class="content">
-      <div class="date-filter">
-        <label for="attendance-date">Select Date:</label>
-        <input type="date" id="attendance-date" max="${new Date().toISOString().split('T')[0]}" />
+        <div class="date-filter">
+          <label for="attendance-date">Select Date:</label>
+          <input type="date" id="attendance-date" max="${new Date().toISOString().split('T')[0]}" />
         </div>
 
         <div class="cards">
@@ -59,51 +64,65 @@ export function Dashboard() {
   `;
 
   function init() {
-    // fetch('http://localhost:3000/api/dashboard')
-    fetch('https://rfid-attendance-backend.onrender.com/api/dashboard')
-      .then(res => res.json())
+    const authToken = localStorage.getItem('authToken');
+    if (!authToken) {
+      window.location.href = '/login';
+      return;
+    }
+
+    fetch('http://localhost:3000/api/dashboard', {
+      headers: {
+        'Authorization': `Bearer ${authToken}`
+      }
+    })
+      .then(res => {
+        if (res.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
+        return res.json();
+      })
       .then(data => {
+        if (!data) return;
+        
         document.querySelector('#total-students').textContent = data.total || 0;
         document.querySelector('#present-today').textContent = data.present || 0;
         document.querySelector('#absent-today').textContent = data.absent || 0;
 
         const ctx = document.getElementById('attendanceChart')?.getContext('2d');
         if (ctx) {
-            new Chart(ctx, {
-                type: 'pie',
-                data: {
-                  labels: ['Absent', 'Present'], // Ensure labels match the data order
-                  datasets: [{
-                    data: [data.chart.Absent || 0, data.chart.Present || 0], // Switch the order of data
-                    backgroundColor: ['#F87171', '#34D399'], // Red for absent, green for present
-                    borderColor: ['#FFFFFF', '#FFFFFF'],
-                    borderWidth: 2,
-                  }],
-                },
-                options: {
-                  responsive: true,
-                  plugins: {
-                    legend: {
-                      position: 'top',
-                      labels: {
-                        font: {
-                          size: 14,
-                          family: 'Poppins',
-                        },
-                        color: '#2D3748',
-                      },
+          new Chart(ctx, {
+            type: 'pie',
+            data: {
+              labels: ['Absent', 'Present'],
+              datasets: [{
+                data: [data.chart.Absent || 0, data.chart.Present || 0],
+                backgroundColor: ['#F87171', '#34D399'],
+                borderColor: ['#FFFFFF', '#FFFFFF'],
+                borderWidth: 2,
+              }],
+            },
+            options: {
+              responsive: true,
+              plugins: {
+                legend: {
+                  position: 'top',
+                  labels: {
+                    font: {
+                      size: 14,
+                      family: 'Poppins',
                     },
-                    tooltip: {
-                      enabled: true,
-                    },
+                    color: '#2D3748',
                   },
                 },
-              });
-              
+              },
+            },
+          });
         }
       })
       .catch(err => console.error('Fetch error:', err));
 
+    // Hamburger menu toggle
     const hamburger = document.querySelector('.hamburger');
     const header = document.querySelector('header');
 

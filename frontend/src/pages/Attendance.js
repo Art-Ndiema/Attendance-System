@@ -130,8 +130,8 @@ export function Attendance() {
       }
 
     // Fetch data and initialize
-    // fetch('http://localhost:3000/api/attendance')
-    fetch('https://rfid-attendance-backend.onrender.com/api/attendance')
+    fetch('http://localhost:3000/api/attendance')
+   // fetch('https://rfid-attendance-backend.onrender.com/api/attendance')
       .then(res => res.json())
       .then(data => {
         allData = data;
