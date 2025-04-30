@@ -94,17 +94,17 @@ function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   
-  if (!token) return res.sendStatus(401);
+  if (!token) return res.status(401).json({ error: 'No token provided' });
   
   jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-123', (err, user) => {
-    if (err) return res.sendStatus(403);
+    if (err) return res.status(403).json({ error: 'Invalid token' });
     
-    // Verify admin still exists (removed is_active check)
+    // Verify admin still exists
     db.get(
       "SELECT admin_id FROM Admins WHERE admin_id = ?",
       [user.adminId],
       (err, admin) => {
-        if (err || !admin) return res.sendStatus(403);
+        if (err || !admin) return res.status(403).json({ error: 'User not found' });
         req.user = user;
         next();
       }
@@ -133,7 +133,6 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(400).json({ error: 'Username and password required' });
   }
 
-  // Removed the is_active check from the query
   db.get(
     "SELECT * FROM Admins WHERE username = ?",
     [username],
@@ -216,10 +215,21 @@ app.get('/api/dashboard', authenticateToken, (req, res) => {
           const chartData = { Present: 0, Absent: 0 };
           chartRows.forEach(row => chartData[row.status] = row.count);
           
+          // Calculate total and absent students
+          const totalStudents = totalRow.total || 0;
+          const presentStudents = presentRow.present || 0;
+          const absentStudents = totalStudents - presentStudents;
+          
+          console.log('Dashboard data:', {
+            total: totalStudents,
+            present: presentStudents,
+            absent: absentStudents
+          });
+          
           res.json({
-            total: totalRow.total,
-            present: presentRow.present || 0,
-            absent: totalRow.total - (presentRow.present || 0),
+            total: totalStudents,
+            present: presentStudents,
+            absent: absentStudents,
             chart: chartData
           });
         });
@@ -245,6 +255,67 @@ app.get('/api/attendance', authenticateToken, (req, res) => {
   db.all(query, date ? [date] : [], (err, rows) => {
     if (err) {
       console.error('Attendance fetch error:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    res.json(rows);
+  });
+});
+
+// API endpoint to get all students
+app.get('/api/students', authenticateToken, (req, res) => {
+  db.all("SELECT * FROM Students ORDER BY name", [], (err, rows) => {
+    if (err) {
+      console.error('Error fetching students:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    res.json(rows);
+  });
+});
+
+// Get a specific student by ID
+app.get('/api/students/:id', authenticateToken, (req, res) => {
+  const { id } = req.params;
+  db.get("SELECT * FROM Students WHERE student_id = ?", [id], (err, row) => {
+    if (err) {
+      console.error('Error fetching student:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    if (!row) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+    res.json(row);
+  });
+});
+
+// Get student attendance history
+app.get('/api/students/:id/attendance', authenticateToken, (req, res) => {
+  const { id } = req.params;
+  const { startDate, endDate } = req.query;
+  
+  let query = `
+    SELECT a.id, a.scan_time, a.status
+    FROM Attendance a
+    WHERE a.student_id = ?
+  `;
+  
+  const params = [id];
+  
+  if (startDate && endDate) {
+    query += ` AND DATE(a.scan_time) BETWEEN ? AND ?`;
+    params.push(startDate, endDate);
+  } else if (startDate) {
+    query += ` AND DATE(a.scan_time) >= ?`;
+    params.push(startDate);
+  } else if (endDate) {
+    query += ` AND DATE(a.scan_time) <= ?`;
+    params.push(endDate);
+  }
+  
+  query += ` ORDER BY a.scan_time DESC`;
+  
+  db.all(query, params, (err, rows) => {
+    if (err) {
+      console.error('Error fetching student attendance:', err);
       return res.status(500).json({ error: 'Database error' });
     }
     res.json(rows);

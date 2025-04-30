@@ -130,15 +130,39 @@ export function Attendance() {
       }
 
     // Fetch data and initialize
-    fetch('http://localhost:3000/api/attendance')
-   // fetch('https://rfid-attendance-backend.onrender.com/api/attendance')
-      .then(res => res.json())
-      .then(data => {
-        allData = data;
-        filteredData = [...allData];
-        displayData(currentPage);
-      })
-      .catch(err => console.error('Fetch error:', err));
+   
+      const authToken = localStorage.getItem('authToken');
+      console.log('Auth token exists:', !!authToken);
+    // fetch('https://rfid-attendance-backend.onrender.com/api/attendance')     
+fetch('http://localhost:3000/api/attendance', {
+  headers: {
+    'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+  }
+})
+.then(res => {
+  if (!res.ok) {
+    if (res.status === 401) {
+      console.log('Unauthorized - redirecting to login');
+      window.location.href = '/login';
+      throw new Error('Unauthorized');
+    }
+    return res.text().then(text => {
+      throw new Error(text || `HTTP error ${res.status}`);
+    });
+  }
+  return res.json();
+})
+.then(data => {
+  // Process data
+  allData = data;
+  filteredData = [...allData];
+  displayData(currentPage);
+})
+.catch(err => {
+  if (err.message !== 'Unauthorized') {
+    console.error('Fetch error:', err);
+  }
+});
 
     // Date filter event listener
     dateFilter.addEventListener('change', (e) => {
